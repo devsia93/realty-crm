@@ -49,17 +49,17 @@ so that ANY Phase 2/3 change to the serializer's field scope (e.g. dropping
 test -- the contract pin. Source-derived (not execution-captured); host confirms
 on first run.
 
-# Deal-specific API leak (cross-cuts the create test)
-DealViewSet.create -> Deal.save() does `worker = self.realty.owner.worker`.
-Deal.realty is null=True at model & serializer level, so DRF ACCEPTS a
-create payload without realty -- then save() hits `None.owner` -> AttributeError
--> uncaught -> HTTP 500 in production. Pinned via pytest.raises (the DRF/Django
-test client re-raises unhandled view exceptions, so the in-test manifestation is
-the raised AttributeError; production DEBUG=False surfaces it as 500).
-FIXME(behavior): Phase 2 services turn this into a 400/ValidationError.
+# Deal-specific API create (Phase 2: routed through services)
+DealViewSet.create -> DealSerializer.create -> realty.services.create_deal ports
+the old Deal.save() main_worker reach-through (realty.owner.worker). Deal.realty
+is null=True at model & serializer level, so DRF ACCEPTS a create payload without
+realty -- but create_deal now raises django ValidationError on the incomplete
+owner chain, which the serializer converts to a DRF ValidationError -> HTTP 400
+(was an uncaught AttributeError / 500). The bogus-FK 400s below are unaffected:
+those fail at serializer.is_valid() (PrimaryKeyRelatedField), before the service.
 
-Factories from tests/factories.py (task 046). Deal.save() reach-through
-realty->owner->worker is wired by DealFactory by default.
+Factories from tests/factories.py (task 046). The realty->owner->worker chain is
+wired by DealFactory by default.
 """
 import uuid
 
@@ -203,10 +203,10 @@ def test_create_minimal_valid_payload_status_and_db_effect(suffix, model, payloa
 
 @pytest.mark.django_db
 def test_deal_create_runs_save_auto_assign_through_api():
-    # Deal.save()'s main_worker reach-through (realty.owner.worker) fires THROUGH
-    # the API: a valid Deal POST with a realty whose owner.worker chain is set
-    # yields 201 AND the persisted Deal.main_worker == realty.owner.worker.
-    # Phase 2 services must preserve this end-to-end effect.
+    # The Deal create API routes through services.create_deal, which ports the
+    # old Deal.save() main_worker reach-through (realty.owner.worker): a valid
+    # POST with a realty whose owner.worker chain is set yields 201 AND the
+    # persisted Deal.main_worker == realty.owner.worker.
     realty = f.RealtyFactory()
     tp = f.TypePaymentFactory()
     before = Deal.objects.count()
@@ -228,21 +228,19 @@ def test_deal_create_runs_save_auto_assign_through_api():
 
 
 @pytest.mark.django_db
-def test_deal_create_without_realty_crashes_save_attribute_error():
-    # Deal.realty is nullable, so DRF accepts a no-realty payload; Deal.save()
-    # then does `self.realty.owner.worker` -> None.owner -> AttributeError.
-    # Production DEBUG=False = HTTP 500; the DRF test client re-raises unhandled
-    # view exceptions, so pin the underlying crash + "nothing persisted".
-    # FIXME(behavior): unhandled None realty leaks out of the API as a 500;
-    # Phase 2 services turn this into a 400/ValidationError (owner-approved).
+def test_deal_create_without_realty_returns_400():
+    # Phase 2: Deal.realty is nullable, so DRF still ACCEPTS a no-realty payload,
+    # but the create now routes through services.create_deal, which raises
+    # ValidationError on the incomplete owner chain -> DRF answers 400 (was an
+    # uncaught AttributeError / HTTP 500). Nothing is persisted.
     tp = f.TypePaymentFactory()
     before = Deal.objects.count()
-    with pytest.raises(AttributeError):
-        APIClient().post(
-            _url("realty/deals/"),
-            {"type_payment": tp.pk, "amount": "1.00", "agreement": SimpleUploadedFile("a.txt", b"x")},
-            format="multipart",
-        )
+    resp = APIClient().post(
+        _url("realty/deals/"),
+        {"type_payment": tp.pk, "amount": "1.00", "agreement": SimpleUploadedFile("a.txt", b"x")},
+        format="multipart",
+    )
+    assert resp.status_code == 400, (resp.status_code, resp.content[:300])
     assert Deal.objects.count() == before
 
 

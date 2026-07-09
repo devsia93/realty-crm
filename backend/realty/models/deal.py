@@ -29,10 +29,3 @@ class Deal(models.Model):
 
     def __str__(self):
         return f'Сделка #{self.id}'
-
-    def save(self, force_insert=False, force_update=False, using=None,
-             update_fields=None):
-        worker = self.realty.owner.worker
-        if worker:
-            self.main_worker = worker
-        super().save()
