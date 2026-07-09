@@ -1,15 +1,41 @@
-version: '3.8'
-
 services:
-
   postgres:
     image: postgres:13-alpine
     environment:
-      - POSTGRES_DB
-      - POSTGRES_USER
-      - POSTGRES_PASSWORD
+      POSTGRES_DB: ${POSTGRES_DB:-realty}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
-      - ./postgresql/dumps:/code/dumps
-      - ./postgresql/data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment: &app_env
+      POSTGRES_DB: ${POSTGRES_DB:-realty}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      SECRET_KEY: ${SECRET_KEY:-dev-only-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - '${POSTGRES_PORT}:5432'
+      - "8000:8000"
+
+  test:
+    build: .
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /code/backend
+    entrypoint: ["pytest"]
+
+volumes:
+  pgdata:
