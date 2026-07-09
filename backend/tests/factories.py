@@ -52,11 +52,22 @@ class WorkerFactory(DjangoModelFactory):
         model = Worker
 
     username = factory.Sequence(lambda n: f"worker{n}")
-    password = "pass-12345"
     email = factory.Sequence(lambda n: f"worker{n}@example.com")
     first_name = "Firstname"
     last_name = "Lastname"
     is_active = True
+
+    @factory.post_generation
+    def password(self, create, extracted, **kwargs):
+        # Task 050: Worker.password is now AbstractUser's hashed field. The old
+        # `password = "pass-12345"` class attr stored the RAW default verbatim.
+        # Route through set_password so the factory yields an authenticatable
+        # worker with a hashed password; `extracted` overrides the default when
+        # the caller passes password=... (factory_boy post_generation contract).
+        raw = extracted or "pass-12345"
+        self.set_password(raw)
+        if create:
+            self.save(update_fields=["password"])
 
 
 class TypeLayoutFactory(DjangoModelFactory):

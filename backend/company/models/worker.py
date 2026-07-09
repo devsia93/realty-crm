@@ -4,7 +4,6 @@ from django.db import models
 
 class Worker(AbstractUser):
     username = models.CharField(max_length=16, unique=True, verbose_name='Псевдоним')
-    password = models.CharField(max_length=255, verbose_name='Пароль')
     email = models.EmailField(blank=True, verbose_name='Адрес эл.почты')
     last_name = models.CharField(max_length=32, verbose_name='Фамилия')
     first_name = models.CharField(max_length=32, default='admin', verbose_name='Имя')
