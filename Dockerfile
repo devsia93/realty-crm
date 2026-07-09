@@ -1,5 +1,5 @@
-# Python 3.9: Django 3.1 / psycopg2 2.8.6 ceiling; Phase 3 upgrades Django 5.x + Python 3.12
-FROM python:3.9-slim
+# Python 3.12 + Django 5.1
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 

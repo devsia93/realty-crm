@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:13-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-realty}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
